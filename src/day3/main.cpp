@@ -1,4 +1,7 @@
 #include <string>
+#include <iostream>
+#include <sstream>
+#include <vector>
 
 const std::string input = R"(.#..............##....#.#.####.
 ##..........#.....##...........
@@ -330,7 +333,54 @@ struct Slope
     const int down = 1;
 };
 
+struct Position
+{
+    std::size_t line = 0;
+    std::size_t offset = 0;
+
+    Position& operator+=( const Slope& slope )
+    {
+        line += slope.down;
+        offset += slope.right;
+
+        return *this;
+    }
+};
+
+std::vector<std::string> split( const std::string& s, const char delimiter )
+{
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream( s );
+    while ( std::getline( tokenStream, token, delimiter ) )
+    {
+        tokens.push_back( token );
+    }
+    return tokens;
+}
+
 int main()
 {
+    const Slope slope;
+    const auto lineLength = input.find( '\n' );
+    const auto stepIncrement = slope.down * lineLength + slope.right - 1;
+    Position currentPosition;
+    const auto lines = split( input, '\n' );
+    int treesHit = 0;
+
+    while ( currentPosition.line < lines.size() )
+    {
+        const auto& currentLine = lines.at( currentPosition.line );
+        const auto character = currentLine.at( currentPosition.offset % lineLength );
+        if ( character == '#')
+        {
+            treesHit++;
+        }
+
+        currentPosition += slope;
+    }
+
+    std::cout << "Trees hit: " << treesHit << '\n';
+
     return 0;
 }
