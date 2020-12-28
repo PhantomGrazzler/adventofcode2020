@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 
 const std::string input = R"(.#..............##....#.#.####.
 ##..........#.....##...........
@@ -329,8 +330,13 @@ const std::string input = R"(.#..............##....#.#.####.
 
 struct Slope
 {
-    const int right = 3;
-    const int down = 1;
+    Slope( const int right, const int down )
+        : right( right )
+        , down( down )
+    {}
+
+    int right;
+    int down;
 };
 
 struct Position
@@ -347,6 +353,8 @@ struct Position
     }
 };
 
+// This split function comes from https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
+//
 std::vector<std::string> split( const std::string& s, const char delimiter )
 {
     std::vector<std::string> tokens;
@@ -359,20 +367,18 @@ std::vector<std::string> split( const std::string& s, const char delimiter )
     return tokens;
 }
 
-int main()
+int count_trees_hit( const std::vector<std::string>& lines, const Slope& slope )
 {
-    const Slope slope;
-    const auto lineLength = input.find( '\n' );
-    const auto stepIncrement = slope.down * lineLength + slope.right - 1;
     Position currentPosition;
-    const auto lines = split( input, '\n' );
+    const auto lineLength = lines.at( 0 ).size();
     int treesHit = 0;
 
     while ( currentPosition.line < lines.size() )
     {
         const auto& currentLine = lines.at( currentPosition.line );
         const auto character = currentLine.at( currentPosition.offset % lineLength );
-        if ( character == '#')
+
+        if ( character == '#' )
         {
             treesHit++;
         }
@@ -380,7 +386,25 @@ int main()
         currentPosition += slope;
     }
 
-    std::cout << "Trees hit: " << treesHit << '\n';
+    return treesHit;
+}
+
+int main()
+{
+    const Slope slopePart1( 3, 1 );
+    const auto lines = split( input, '\n' );
+
+    std::cout << "[Part 1] Trees hit: " << count_trees_hit( lines, slopePart1 ) << '\n';
+
+    const std::vector<Slope> slopes = { { 1, 1 }, { 3, 1 }, { 5, 1 }, { 7, 1 }, { 1, 2 } };
+    int product = 1;
+
+    for ( const auto& slope : slopes )
+    {
+        product *= count_trees_hit( lines, slope );
+    }
+
+    std::cout << "[Part 2] Product: " << product << '\n';
 
     return 0;
 }
