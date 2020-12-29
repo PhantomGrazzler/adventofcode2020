@@ -1,4 +1,9 @@
 #include <string>
+#include <vector>
+#include <sstream>
+#include <map>
+#include <regex>
+#include <iostream>
 
 const std::string input = R"(eyr:2029 iyr:2013
 hcl:#ceb3a1 byr:1939 ecl:blu
@@ -855,7 +860,7 @@ ecl:grn byr:1922 hgt:153cm
 
 hgt:179cm byr:1990 eyr:2026 hcl:#623a2f ecl:blu
 pid:306676089
-iyr:2011)" + std::string(R"(
+iyr:2011)" + std::string( R"(
 
 eyr:2022 ecl:oth
 pid:894642127
@@ -1009,9 +1014,230 @@ eyr:2027 ecl:brn hcl:#ceb3a1
 iyr:2010 ecl:oth
 pid:455361219 hgt:153cm eyr:2027 hcl:#6b5442
 byr:1965
-)");
+)" );
+
+const std::string sampleInput = R"(ecl:gry pid:860033327 eyr:2020 hcl:#fffffd
+byr:1937 iyr:2017 cid:147 hgt:183cm
+
+iyr:2013 ecl:amb cid:350 eyr:2023 pid:028048884
+hcl:#cfa07d byr:1929
+
+hcl:#ae17e1 iyr:2013
+eyr:2024
+ecl:brn pid:760753108 byr:1931
+hgt:179cm
+
+hcl:#cfa07d eyr:2025 pid:166559648
+iyr:2011 ecl:brn hgt:59in)";
+
+// This split function comes from https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
+//
+std::vector<std::string> split( const std::string& s, const char delimiter )
+{
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream( s );
+    while ( std::getline( tokenStream, token, delimiter ) )
+    {
+        tokens.push_back( token );
+    }
+    return tokens;
+}
+
+const std::vector<std::string> requiredFields = { "byr", "iyr", "eyr", "hgt", "hcl", "ecl", "pid" };
+
+class Passport
+{
+private:
+    std::vector<std::string> m_requiredFields = requiredFields;
+    std::map<std::string, std::string> m_details;
+
+public:
+    void set_field( const std::string& field, const std::string& value )
+    {
+        m_details[field] = value;
+    }
+
+    bool contains_required_fields() const
+    {
+        if ( m_details.size() >= m_requiredFields.size() )
+        {
+            for ( const auto& key : m_requiredFields )
+            {
+                if ( m_details.find( key ) == std::cend( m_details ) )
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    bool is_valid() const
+    {
+        try
+        {
+            // byr (Birth Year) - four digits; at least 1920 and at most 2002.
+            const auto byr = std::stoi( m_details.at( "byr" ) );
+            if ( byr < 1920 || byr > 2002 )
+            {
+                return false;
+            }
+
+            // iyr (Issue Year) - four digits; at least 2010 and at most 2020.
+            const auto iyr = std::stoi( m_details.at( "iyr" ) );
+            if ( iyr < 2010 || iyr > 2020 )
+            {
+                return false;
+            }
+
+            // eyr (Expiration Year) - four digits; at least 2020 and at most 2030.
+            const auto eyr = std::stoi( m_details.at( "eyr" ) );
+            if ( eyr < 2020 || eyr > 2030 )
+            {
+                return false;
+            }
+
+            // hgt (Height) - a number followed by either cm or in:
+            //      - If cm, the number must be at least 150 and at most 193.
+            //      - If in, the number must be at least 59 and at most 76.
+            const auto hgt = m_details.at( "hgt" );
+            {
+                std::smatch match;
+                const std::regex hgtRegex( R"((\d+)(cm|in))" );
+                if ( std::regex_match( hgt, match, hgtRegex ) )
+                {
+                    const auto height = std::stoi( match[1] );
+
+                    if ( match[2] == "cm" )
+                    {
+                        if ( height < 150 || height > 193 )
+                        {
+                            return false;
+                        }
+                    }
+                    else if ( match[2] == "in" )
+                    {
+                        if ( height < 59 || height > 76 )
+                        {
+                            return false;
+                        }
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            // hcl - a # followed by exactly six characters 0-9 or a-f.
+            const auto hcl = m_details.at( "hcl" );
+            {
+                std::smatch match;
+                const std::regex hclRegex( R"(#[0-9a-f]{6})" );
+                if ( !std::regex_match( hcl, match, hclRegex ) )
+                {
+                    return false;
+                }
+            }
+
+            // ecl (Eye Color) - exactly one of: amb blu brn gry grn hzl oth.
+            const auto ecl = m_details.at( "ecl" );
+            if ( ecl != "amb" && ecl != "blu" && ecl != "brn" && ecl != "gry" && ecl != "grn" &&
+                 ecl != "hzl" && ecl != "oth" )
+            {
+                return false;
+            }
+
+            // pid (Passport ID) - a nine-digit number, including leading zeroes.
+            const auto pid = m_details.at( "pid" );
+            {
+                std::smatch match;
+                const std::regex pidRegex( R"(\d{9})" );
+                if ( !std::regex_match( pid, match, pidRegex ) )
+                {
+                    return false;
+                }
+            }
+
+            // cid (Country ID) - ignored, missing or not.
+        }
+        catch ( const std::exception& )
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    void clear()
+    {
+        m_details.clear();
+    }
+};
 
 int main()
 {
+    const auto lines = split( input, '\n' );
+    std::vector<Passport> passports;
+    passports.reserve( input.size() / 3 );
+    const std::regex passportFieldRegex( R"((\w+):(\S+))" );
+    Passport pp;
 
+    for ( const auto& line : lines )
+    {
+        if ( line.empty() )
+        {
+            passports.push_back( pp );
+            pp.clear();
+        }
+        else
+        {
+            const auto fields = split( line, ' ' );
+
+            for ( const auto& field : fields )
+            {
+                std::smatch match;
+
+                if ( std::regex_match( field, match, passportFieldRegex ) )
+                {
+                    pp.set_field( match[1], match[2] );
+                }
+            }
+        }
+    }
+
+    passports.push_back( pp );
+
+    std::cout << "[Part 1]\nValid passports: "
+              << std::count_if(
+                     cbegin( passports ),
+                     cend( passports ),
+                     []( const auto& passport ) { return passport.contains_required_fields(); } )
+              << '\n'
+              << "Invalid passports: "
+              << std::count_if(
+                     cbegin( passports ),
+                     cend( passports ),
+                     []( const auto& passport ) { return !passport.contains_required_fields(); } )
+              << '\n'
+              << "Total passports: " << passports.size() << "\n\n";
+
+    std::vector<Passport> allFieldsPassports;
+    std::copy_if(
+        cbegin( passports ),
+        cend( passports ),
+        std::back_inserter( allFieldsPassports ),
+        []( const auto& passport ) { return passport.contains_required_fields(); } );
+    std::cout << "[Part 2]\nValid passports: "
+              << std::count_if(
+                     cbegin( allFieldsPassports ),
+                     cend( allFieldsPassports ),
+                     []( const auto& passport ) { return passport.is_valid(); } )
+              << '\n';
 }
