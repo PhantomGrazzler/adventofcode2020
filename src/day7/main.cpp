@@ -2,9 +2,11 @@
 #include <vector>
 #include <sstream>
 #include <iostream>
-#include <set>
+#include <regex>
 #include <algorithm>
 #include <numeric>
+#include <map>
+#include <set>
 
 const std::string input =
     R"(dull silver bags contain 2 striped magenta bags, 2 dark coral bags, 1 bright orange bag, 4 plaid blue bags.
@@ -629,7 +631,7 @@ std::vector<std::string> split( const std::string& s, const char delimiter )
 }
 
 template<typename T>
-void print( const T& container )
+void print( const T& container, const char suffix )
 {
     std::cout << '{';
     bool isFirst = true;
@@ -645,7 +647,157 @@ void print( const T& container )
             std::cout << ',' << element;
         }
     }
-    std::cout << '}';
+    std::cout << '}' << suffix;
+}
+
+const std::regex terminalRegex( R"((.*) bags contain no other bags.)" );
+const std::regex containingRegex( R"((.*) bags contain (\d+.*))" );
+const std::regex containedRegex( R"(\s*(\d+) (.+) bags?\.?)" );
+
+enum BagType
+{
+    Parent,
+    Child
+};
+
+struct Bag
+{
+    Bag( const std::string& bagColour )
+        : colour( bagColour )
+    {}
+
+    bool contains(
+        const std::vector<std::weak_ptr<Bag>>& bags, const std::shared_ptr<Bag>& pBag ) const
+    {
+        const auto iter =
+            std::find_if( cbegin( bags ), cend( bags ), [&pBag]( const auto& pElement ) {
+                return pElement.lock() == pBag;
+            } );
+        return iter != cend( bags );
+    }
+
+    bool has_child( const std::shared_ptr<Bag>& pChild ) const
+    {
+        return contains( childBags, pChild );
+    }
+
+    void add_child( const std::shared_ptr<Bag>& pChild )
+    {
+        if ( !has_child( pChild ) )
+        {
+            childBags.emplace_back( pChild );
+        }
+    }
+
+    bool has_parent( const std::shared_ptr<Bag>& pParent ) const
+    {
+        return contains( parentBags, pParent );
+    }
+
+    void add_parent( const std::shared_ptr<Bag>& pParent )
+    {
+        if ( !has_parent( pParent ) )
+        {
+            parentBags.emplace_back( pParent );
+        }
+    }
+
+    std::string colour;
+    std::vector<std::weak_ptr<Bag>> childBags = {};
+    std::vector<std::weak_ptr<Bag>> parentBags = {};
+};
+
+struct Rules
+{
+    std::map<std::string, std::shared_ptr<Bag>> colourToBag;
+
+    bool colour_exists( const std::string& colour ) const
+    {
+        return colourToBag.count( colour ) > 0;
+    }
+};
+
+std::shared_ptr<Bag> create_bag_if_needed( const std::string& colour, Rules& rules )
+{
+    if ( !rules.colour_exists( colour ) )
+    {
+        auto pBag = std::make_shared<Bag>( colour );
+        rules.colourToBag[colour] = pBag;
+        return pBag;
+    }
+    else
+    {
+        return rules.colourToBag.at( colour );
+    }
+}
+
+void parse_contained_bags(
+    const std::string& containedBags, Rules& rules, const std::shared_ptr<Bag>& pParentBag )
+{
+    const auto individualBags = split( containedBags, ',' );
+
+    for ( const auto& bag : individualBags )
+    {
+        std::smatch match;
+        if ( std::regex_match( bag, match, containedRegex ) )
+        {
+            const auto colour = match[2].str();
+            create_bag_if_needed( colour, rules );
+
+            const auto pChildBag = rules.colourToBag.at( colour );
+            pChildBag->add_parent( pParentBag );
+            pParentBag->add_child( pChildBag );
+        }
+        else
+        {
+            std::cerr << "Failed to match contained regex for: " << bag << '\n';
+        }
+    }
+}
+
+void parse_line( const std::string& line, Rules& rules )
+{
+    std::smatch match;
+
+    if ( std::regex_match( line, match, terminalRegex ) )
+    {
+        // This bag does not contain any other bags, so we just add it if it doesn't already exist.
+        //
+        create_bag_if_needed( match[1].str(), rules );
+
+        return;
+    }
+    else if ( std::regex_match( line, match, containingRegex ) )
+    {
+        // This bag contains other bags. First we add this bag if it doesn't already exist, and then
+        // we continue to parse the bags it contains.
+        //
+        const auto pParentBag = create_bag_if_needed( match[1].str(), rules );
+
+        parse_contained_bags( match[2].str(), rules, pParentBag );
+    }
+    else
+    {
+        std::cerr << "Failed to match anything for line: " << line << '\n';
+    }
+}
+
+void add_all_parents( std::set<std::string>& parentColours, const std::shared_ptr<Bag>& pBag )
+{
+    for ( const auto pParent : pBag->parentBags )
+    {
+        const auto pSharedParent = pParent.lock();
+        parentColours.insert( pSharedParent->colour );
+        add_all_parents( parentColours, pSharedParent );
+    }
+}
+
+void print_known_colours( const Rules& rules )
+{
+    std::for_each(
+        cbegin( rules.colourToBag ),
+        cend( rules.colourToBag ),
+        []( const auto& colourToBag ) { std::cout << colourToBag.first << '\n'; } );
 }
 
 int main()
@@ -653,7 +805,19 @@ int main()
     const auto lines = split( input, '\n' );
 
     {
-        std::cout << "[Part 1]\n" << '\n';
+        Rules rules;
+
+        for ( const auto& line : lines )
+        {
+            parse_line( line, rules );
+        }
+
+        std::set<std::string> parentColours;
+        add_all_parents( parentColours, rules.colourToBag.at( "shiny gold" ) );
+
+        std::cout << "[Part 1]\n";
+        std::cout << "shiny gold parents: " << parentColours.size() << '\n';
+        print( parentColours, '\n' );
     }
 
     {
