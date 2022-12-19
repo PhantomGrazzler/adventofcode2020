@@ -224,9 +224,10 @@ light purple bags contain 2 light cyan bags.
 bright gold bags contain 1 dark aqua bag.
 muted bronze bags contain 2 light teal bags.
 striped gray bags contain 2 light cyan bags, 1 pale black bag, 5 plaid plum bags.
-wavy orange bags contain 2 pale coral bags, 2 dim coral bags.)" +
+wavy orange bags contain 2 pale coral bags, 2 dim coral bags.
+)" +
     std::string(
-        R"( wavy silver bags contain 2 posh white bags, 1 faded beige bag.
+        R"(wavy silver bags contain 2 posh white bags, 1 faded beige bag.
 clear chartreuse bags contain 1 vibrant lime bag, 2 faded plum bags, 1 striped chartreuse bag, 5 clear maroon bags.
 vibrant tan bags contain 3 striped lime bags, 4 pale maroon bags, 2 muted turquoise bags, 4 dark lime bags.
 posh aqua bags contain 2 muted tan bags, 2 shiny blue bags, 2 posh purple bags.
@@ -443,7 +444,8 @@ posh violet bags contain 3 clear gold bags.
 striped tomato bags contain 2 shiny black bags.
 muted crimson bags contain 4 light aqua bags, 3 dim gold bags.
 clear tan bags contain 4 drab tomato bags, 4 mirrored bronze bags, 1 shiny chartreuse bag.
-posh magenta bags contain 4 posh red bags, 3 light bronze bags.)" ) +
+posh magenta bags contain 4 posh red bags, 3 light bronze bags.
+)" ) +
     std::string(
         R"(dim blue bags contain 5 dim gray bags, 1 light turquoise bag, 5 muted bronze bags.
 drab plum bags contain 1 vibrant plum bag, 4 striped coral bags.
@@ -606,7 +608,7 @@ bright olive bags contain 1 dark tan bag, 4 striped orange bags, 3 bright orange
 plaid plum bags contain 1 shiny maroon bag, 1 dotted coral bag.
 bright chartreuse bags contain 2 wavy blue bags.)" );
 
-const std::string sampleInput = R"(light red bags contain 1 bright white bag, 2 muted yellow bags.
+const std::string part1SampleInput = R"(light red bags contain 1 bright white bag, 2 muted yellow bags.
 dark orange bags contain 3 bright white bags, 4 muted yellow bags.
 bright white bags contain 1 shiny gold bag.
 muted yellow bags contain 2 shiny gold bags, 9 faded blue bags.
@@ -615,6 +617,14 @@ dark olive bags contain 3 faded blue bags, 4 dotted black bags.
 vibrant plum bags contain 5 faded blue bags, 6 dotted black bags.
 faded blue bags contain no other bags.
 dotted black bags contain no other bags.)";
+
+const std::string part2SampleInput = R"(shiny gold bags contain 2 dark red bags.
+dark red bags contain 2 dark orange bags.
+dark orange bags contain 2 dark yellow bags.
+dark yellow bags contain 2 dark green bags.
+dark green bags contain 2 dark blue bags.
+dark blue bags contain 2 dark violet bags.
+dark violet bags contain no other bags.)";
 
 // This split function comes from https://www.fluentcpp.com/2017/04/21/how-to-split-a-string-in-c/
 //
@@ -654,10 +664,17 @@ const std::regex terminalRegex( R"((.*) bags contain no other bags.)" );
 const std::regex containingRegex( R"((.*) bags contain (\d+.*))" );
 const std::regex containedRegex( R"(\s*(\d+) (.+) bags?\.?)" );
 
-enum BagType
+struct Bag;
+
+struct ChildBag
 {
-    Parent,
-    Child
+    ChildBag(const std::shared_ptr<Bag>& childBag, const int num)
+        : pChildBag(childBag)
+        , numberInParent(num)
+    {}
+
+    std::shared_ptr<Bag> pChildBag;
+    int numberInParent;
 };
 
 struct Bag
@@ -667,7 +684,8 @@ struct Bag
     {}
 
     bool contains(
-        const std::vector<std::weak_ptr<Bag>>& bags, const std::shared_ptr<Bag>& pBag ) const
+        const std::vector<std::weak_ptr<Bag>>& bags,
+        const std::shared_ptr<Bag>& pBag ) const
     {
         const auto iter =
             std::find_if( cbegin( bags ), cend( bags ), [&pBag]( const auto& pElement ) {
@@ -676,16 +694,28 @@ struct Bag
         return iter != cend( bags );
     }
 
-    bool has_child( const std::shared_ptr<Bag>& pChild ) const
+    bool contains(
+        const std::vector<std::shared_ptr<ChildBag>>& childBags, const std::shared_ptr<Bag>& pBag ) const
     {
-        return contains( childBags, pChild );
+        const auto iter = std::find_if(
+            cbegin( childBags ),
+            cend( childBags ),
+            [&pBag]( const std::shared_ptr<ChildBag>& pElement ) {
+                return pElement->pChildBag == pBag;
+            } );
+        return iter != cend( childBags );
     }
 
-    void add_child( const std::shared_ptr<Bag>& pChild )
+    bool has_child( const std::shared_ptr<Bag>& pChild ) const
     {
-        if ( !has_child( pChild ) )
+        return contains( m_childBags, pChild );
+    }
+
+    void add_child( const std::shared_ptr<ChildBag>& pChild )
+    {
+        if ( !has_child( pChild->pChildBag ) )
         {
-            childBags.emplace_back( pChild );
+            m_childBags.emplace_back( pChild );
         }
     }
 
@@ -703,7 +733,7 @@ struct Bag
     }
 
     std::string colour;
-    std::vector<std::weak_ptr<Bag>> childBags = {};
+    std::vector<std::shared_ptr<ChildBag>> m_childBags = {};
     std::vector<std::weak_ptr<Bag>> parentBags = {};
 };
 
@@ -742,11 +772,12 @@ void parse_contained_bags(
         if ( std::regex_match( bag, match, containedRegex ) )
         {
             const auto colour = match[2].str();
+            const auto numberInParent = std::stoi( match[1].str() );
             create_bag_if_needed( colour, rules );
 
-            const auto pChildBag = rules.colourToBag.at( colour );
+            const auto& pChildBag = rules.colourToBag.at( colour );
             pChildBag->add_parent( pParentBag );
-            pParentBag->add_child( pChildBag );
+            pParentBag->add_child( std::make_shared<ChildBag>( pChildBag, numberInParent ));
         }
         else
         {
@@ -784,7 +815,7 @@ void parse_line( const std::string& line, Rules& rules )
 
 void add_all_parents( std::set<std::string>& parentColours, const std::shared_ptr<Bag>& pBag )
 {
-    for ( const auto pParent : pBag->parentBags )
+    for ( const auto& pParent : pBag->parentBags )
     {
         const auto pSharedParent = pParent.lock();
         parentColours.insert( pSharedParent->colour );
@@ -797,14 +828,47 @@ void print_known_colours( const Rules& rules )
     std::for_each(
         cbegin( rules.colourToBag ),
         cend( rules.colourToBag ),
-        []( const auto& colourToBag ) { std::cout << colourToBag.first << '\n'; } );
+        []( const auto& colourToBag )
+        {
+            std::cout << colourToBag.first << '\n';
+        } );
+}
+
+int count_contained_bags( const std::shared_ptr<ChildBag>& pBag )
+{
+    if ( pBag->pChildBag->m_childBags.empty() )
+    {
+        return pBag->numberInParent;
+    }
+    else
+    {
+        int containedBags = 0;
+        for ( const auto& pChildBag : pBag->pChildBag->m_childBags )
+        {
+            containedBags += count_contained_bags( pChildBag );
+        }
+        return pBag->numberInParent * (containedBags + 1);
+    }
+}
+
+int count_contained_bags( const std::string& bagColour, const Rules& rules )
+{
+    const auto& pRootBag = rules.colourToBag.at( bagColour );
+    int containedBags = 0;
+    for ( const auto& pChildBag : pRootBag->m_childBags )
+    {
+        containedBags += count_contained_bags( pChildBag );
+    }
+
+    return containedBags;
 }
 
 int main()
 {
-    const auto lines = split( input, '\n' );
+    const std::string colourOfInterest = "shiny gold";
 
     {
+        const auto lines = split( input, '\n' );
         Rules rules;
 
         for ( const auto& line : lines )
@@ -813,14 +877,24 @@ int main()
         }
 
         std::set<std::string> parentColours;
-        add_all_parents( parentColours, rules.colourToBag.at( "shiny gold" ) );
+        add_all_parents( parentColours, rules.colourToBag.at( colourOfInterest ) );
 
         std::cout << "[Part 1]\n";
-        std::cout << "shiny gold parents: " << parentColours.size() << '\n';
+        std::cout << colourOfInterest << " parents: " << parentColours.size() << '\n';
         print( parentColours, '\n' );
     }
 
     {
+        const auto lines = split( input, '\n' );
+        Rules rules;
+
+        for ( const auto& line : lines )
+        {
+            parse_line( line, rules );
+        }
+
         std::cout << "\n[Part 2]" << '\n';
+        std::cout << colourOfInterest << " contains "
+                  << count_contained_bags( colourOfInterest, rules ) << " bags\n";
     }
 }
