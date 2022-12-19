@@ -9,5 +9,5 @@ target_link_libraries(day6
     )
 
 set_property(TARGET day6
-    PROPERTY VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:day3>
+    PROPERTY VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:day6>
     )
